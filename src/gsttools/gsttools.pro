@@ -2,6 +2,7 @@ TEMPLATE = lib
 
 TARGET = qgsttools_p
 QPRO_PWD = $$PWD
+
 QT = core-private multimedia-private gui-private
 
 !static:DEFINES += QT_MAKEDLL
@@ -22,9 +23,10 @@ PKGCONFIG += \
     gstreamer-video-$$GST_VERSION \
     gstreamer-pbutils-$$GST_VERSION
 
-equals(GST_VERSION,"0.10"): PKGCONFIG_PRIVATE += gstreamer-interfaces-$$GST_VERSION
-
-maemo*: PKGCONFIG_PRIVATE +=gstreamer-plugins-bad-0.10
+equals(GST_VERSION,"0.10") {
+    PKGCONFIG_PRIVATE += gstreamer-interfaces-0.10
+    maemo*: PKGCONFIG_PRIVATE +=gstreamer-plugins-bad-0.10
+}
 
 config_resourcepolicy {
     DEFINES += HAVE_RESOURCE_POLICY
@@ -45,6 +47,7 @@ PRIVATE_HEADERS += \
     qgstutils_p.h \
     qgstvideobuffer_p.h \
     qvideosurfacegstsink_p.h \
+    qgstreamerbufferprobe_p.h \
     qgstreamervideorendererinterface_p.h \
     qgstreameraudioinputselector_p.h \
     qgstreamervideorenderer_p.h \
@@ -56,12 +59,11 @@ PRIVATE_HEADERS += \
     qgstreamervideowindow_p.h
 
 SOURCES += \
-    qgstbufferpoolinterface.cpp \
     qgstreamerbushelper.cpp \
     qgstreamermessage.cpp \
     qgstutils.cpp \
     qgstvideobuffer.cpp \
-    qvideosurfacegstsink.cpp \
+    qgstreamerbufferprobe.cpp \
     qgstreamervideorendererinterface.cpp \
     qgstreameraudioinputselector.cpp \
     qgstreamervideorenderer.cpp \
@@ -82,15 +84,29 @@ qtHaveModule(widgets) {
         qgstreamervideowidget.cpp
 }
 
-maemo6 {
-    PKGCONFIG_PRIVATE += qmsystem2
+equals(GST_VERSION,"0.10") {
+    SOURCES += \
+            qgstbufferpoolinterface.cpp \
+            qvideosurfacegstsink.cpp \
 
-    contains(QT_CONFIG, opengles2):qtHaveModule(widgets) {
-        PRIVATE_HEADERS += qgstreamergltexturerenderer_p.h
-        SOURCES += qgstreamergltexturerenderer.cpp
-        QT += opengl
-        LIBS_PRIVATE += -lEGL -lgstmeegointerfaces-0.10
+    maemo6 {
+        PKGCONFIG_PRIVATE += qmsystem2
+
+        contains(QT_CONFIG, opengles2):qtHaveModule(widgets) {
+            PRIVATE_HEADERS += qgstreamergltexturerenderer_p.h
+            SOURCES += qgstreamergltexturerenderer.cpp
+            QT += opengl
+            LIBS_PRIVATE += -lEGL -lgstmeegointerfaces-0.10
+        }
     }
+} else {
+    HEADERS += \
+        qgstvideorendererplugin_p.h \
+        qgstvideorenderersink_p.h
+
+    SOURCES += \
+        qgstvideorendererplugin.cpp \
+        qgstvideorenderersink.cpp
 }
 
 mir: {

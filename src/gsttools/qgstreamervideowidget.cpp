@@ -230,11 +230,8 @@ void QGstreamerVideoWidgetControl::updateNativeVideoSize()
     if (m_videoSink) {
         //find video native size to update video widget size hint
         GstPad *pad = gst_element_get_static_pad(m_videoSink, "sink");
-#if !GST_CHECK_VERSION(1,0,0)
-        GstCaps *caps = gst_pad_get_negotiated_caps(pad);
-#else
-        GstCaps *caps = gst_pad_get_current_caps(pad);
-#endif
+        GstCaps *caps = qt_gst_pad_get_current_caps(pad);
+
         gst_object_unref(GST_OBJECT(pad));
 
         if (caps) {
