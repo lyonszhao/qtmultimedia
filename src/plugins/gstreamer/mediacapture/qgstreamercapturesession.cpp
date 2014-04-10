@@ -49,6 +49,7 @@
 #include <private/qgstreamervideorendererinterface_p.h>
 #include <private/qgstreameraudioprobecontrol_p.h>
 #include <private/qgstreamerbushelper_p.h>
+#include <private/qgstutils_p.h>
 
 #include <gst/gsttagsetter.h>
 #include <gst/gstversion.h>
@@ -63,13 +64,6 @@
 #include <QtGui/qimage.h>
 
 QT_BEGIN_NAMESPACE
-
-#if GST_CHECK_VERSION(1,0,0)
-#define gstRef(element) gst_object_ref_sink(GST_OBJECT(element));
-#else
-#define gstRef(element) { gst_object_ref(GST_OBJECT(element)); gst_object_sink(GST_OBJECT(element)); }
-#endif
-#define gstUnref(element) { if (element) { gst_object_unref(GST_OBJECT(element)); element = 0; } }
 
 QGstreamerCaptureSession::QGstreamerCaptureSession(QGstreamerCaptureSession::CaptureMode captureMode, QObject *parent)
     :QObject(parent),
@@ -101,7 +95,7 @@ QGstreamerCaptureSession::QGstreamerCaptureSession(QGstreamerCaptureSession::Cap
      m_passPrerollImage(false)
 {
     m_pipeline = gst_pipeline_new("media-capture-pipeline");
-    gstRef(m_pipeline);
+    qt_gst_object_ref_sink(m_pipeline);
 
     m_bus = gst_element_get_bus(m_pipeline);
     m_busHelper = new QGstreamerBusHelper(m_bus, this);
@@ -120,6 +114,7 @@ QGstreamerCaptureSession::~QGstreamerCaptureSession()
 {
     setState(StoppedState);
     gst_element_set_state(m_pipeline, GST_STATE_NULL);
+    gst_object_unref(GST_OBJECT(m_bus));
     gst_object_unref(GST_OBJECT(m_pipeline));
 }
 
@@ -164,6 +159,7 @@ GstElement *QGstreamerCaptureSession::buildEncodeBin()
         gst_bin_add(GST_BIN(encodeBin), audioEncoder);
 
         if (!gst_element_link_many(audioConvert, audioQueue, m_audioVolume, audioEncoder, muxer, NULL)) {
+            m_audioVolume = 0;
             gst_object_unref(encodeBin);
             return 0;
         }
@@ -337,6 +333,7 @@ GstElement *QGstreamerCaptureSession::buildVideoPreview()
 
             g_object_set(G_OBJECT(capsFilter), "caps", caps, NULL);
 
+            gst_caps_unref(caps);
         }
 
         // add ghostpads
@@ -504,12 +501,13 @@ GstElement *QGstreamerCaptureSession::buildImageCapture()
 
     GstPad *pad = gst_element_get_static_pad(queue, "src");
     Q_ASSERT(pad);
-
 #if GST_CHECK_VERSION(1,0,0)
     gst_pad_add_probe(pad, GST_PAD_PROBE_TYPE_BUFFER, passImageFilter, this);
 #else
     gst_pad_add_buffer_probe(pad, G_CALLBACK(passImageFilter), this);
 #endif
+    gst_object_unref(GST_OBJECT(pad));
+
     g_object_set(G_OBJECT(sink), "signal-handoffs", TRUE, NULL);
     g_signal_connect(G_OBJECT(sink), "handoff",
                      G_CALLBACK(saveImageFilter), this);
@@ -539,6 +537,7 @@ void QGstreamerCaptureSession::captureImage(int requestId, const QString &fileNa
 
 
 #define REMOVE_ELEMENT(element) { if (element) {gst_bin_remove(GST_BIN(m_pipeline), element); element = 0;} }
+#define UNREF_ELEMENT(element) { if (element) { gst_object_unref(GST_OBJECT(element)); element = 0; } }
 
 bool QGstreamerCaptureSession::rebuildGraph(QGstreamerCaptureSession::PipelineMode newMode)
 {
@@ -570,6 +569,9 @@ bool QGstreamerCaptureSession::rebuildGraph(QGstreamerCaptureSession::PipelineMo
                 if (ok) {
                     gst_bin_add_many(GST_BIN(m_pipeline), m_audioSrc, m_audioPreview, NULL);
                     ok &= gst_element_link(m_audioSrc, m_audioPreview);
+                } else {
+                    UNREF_ELEMENT(m_audioSrc);
+                    UNREF_ELEMENT(m_audioPreview);
                 }
             }
             if (m_captureMode & Video || m_captureMode & Image) {
@@ -590,6 +592,12 @@ bool QGstreamerCaptureSession::rebuildGraph(QGstreamerCaptureSession::PipelineMo
                     ok &= gst_element_link(m_videoTee, m_videoPreviewQueue);
                     ok &= gst_element_link(m_videoPreviewQueue, m_videoPreview);
                     ok &= gst_element_link(m_videoTee, m_imageCaptureBin);
+                } else {
+                    UNREF_ELEMENT(m_videoSrc);
+                    UNREF_ELEMENT(m_videoTee);
+                    UNREF_ELEMENT(m_videoPreviewQueue);
+                    UNREF_ELEMENT(m_videoPreview);
+                    UNREF_ELEMENT(m_imageCaptureBin);
                 }
             }
             break;
@@ -639,6 +647,11 @@ bool QGstreamerCaptureSession::rebuildGraph(QGstreamerCaptureSession::PipelineMo
                     ok &= gst_element_link(m_audioTee, m_audioPreviewQueue);
                     ok &= gst_element_link(m_audioPreviewQueue, m_audioPreview);
                     ok &= gst_element_link(m_audioTee, m_encodeBin);
+                } else {
+                    UNREF_ELEMENT(m_audioSrc);
+                    UNREF_ELEMENT(m_audioPreview);
+                    UNREF_ELEMENT(m_audioTee);
+                    UNREF_ELEMENT(m_audioPreviewQueue);
                 }
             }
 
@@ -656,6 +669,11 @@ bool QGstreamerCaptureSession::rebuildGraph(QGstreamerCaptureSession::PipelineMo
                     ok &= gst_element_link(m_videoSrc, m_videoTee);
                     ok &= gst_element_link(m_videoTee, m_videoPreviewQueue);
                     ok &= gst_element_link(m_videoPreviewQueue, m_videoPreview);
+                } else {
+                    UNREF_ELEMENT(m_videoSrc);
+                    UNREF_ELEMENT(m_videoTee);
+                    UNREF_ELEMENT(m_videoPreviewQueue);
+                    UNREF_ELEMENT(m_videoPreview);
                 }
 
                 if (ok && (m_captureMode & Video))
@@ -925,6 +943,7 @@ void QGstreamerCaptureSession::setMetaData(const QMap<QByteArray, QVariant> &dat
             }
 
         }
+        gst_iterator_free(elements);
     }
 }
 
@@ -1104,8 +1123,10 @@ void QGstreamerCaptureSession::removeAudioBufferProbe()
         return;
 
     GstPad *pad = getAudioProbePad();
-    if (pad)
+    if (pad) {
         gst_pad_remove_buffer_probe(pad, m_audioBufferProbeId);
+        gst_object_unref(G_OBJECT(pad));
+    }
 
     m_audioBufferProbeId = -1;
 }
@@ -1115,8 +1136,10 @@ void QGstreamerCaptureSession::addAudioBufferProbe()
     Q_ASSERT(m_audioBufferProbeId == -1);
 
     GstPad *pad = getAudioProbePad();
-    if (pad)
+    if (pad) {
         m_audioBufferProbeId = gst_pad_add_buffer_probe(pad, G_CALLBACK(padAudioBufferProbe), this);
+        gst_object_unref(G_OBJECT(pad));
+    }
 }
 
 QT_END_NAMESPACE

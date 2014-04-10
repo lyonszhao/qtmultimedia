@@ -42,7 +42,6 @@
 #include "qandroidvideorendercontrol.h"
 
 #include <QtCore/private/qjni_p.h>
-#include "jsurfacetextureholder.h"
 #include <QAbstractVideoSurface>
 #include <QVideoSurfaceFormat>
 #include <qevent.h>
@@ -51,6 +50,7 @@
 #include <qopenglfunctions.h>
 #include <qopenglshaderprogram.h>
 #include <qopenglframebufferobject.h>
+#include <QtCore/private/qjnihelpers_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -122,20 +122,8 @@ QAndroidVideoRendererControl::QAndroidVideoRendererControl(QObject *parent)
 
 QAndroidVideoRendererControl::~QAndroidVideoRendererControl()
 {
-    if (m_surfaceTexture) {
-        m_surfaceTexture->callMethod<void>("release");
-        delete m_surfaceTexture;
-        m_surfaceTexture = 0;
-    }
-    if (m_androidSurface) {
-        m_androidSurface->callMethod<void>("release");
-        delete m_androidSurface;
-        m_androidSurface = 0;
-    }
-    if (m_surfaceHolder) {
-        delete m_surfaceHolder;
-        m_surfaceHolder = 0;
-    }
+    clearSurfaceTexture();
+
     if (m_glDeleter)
         m_glDeleter->deleteLater();
 }
@@ -189,7 +177,7 @@ bool QAndroidVideoRendererControl::initSurfaceTexture()
 
     m_surfaceTexture = new JSurfaceTexture(m_externalTex);
 
-    if (m_surfaceTexture->isValid()) {
+    if (m_surfaceTexture->object()) {
         connect(m_surfaceTexture, SIGNAL(frameAvailable()), this, SLOT(onFrameAvailable()));
     } else {
         delete m_surfaceTexture;
@@ -202,6 +190,24 @@ bool QAndroidVideoRendererControl::initSurfaceTexture()
     return m_surfaceTexture != 0;
 }
 
+void QAndroidVideoRendererControl::clearSurfaceTexture()
+{
+    if (m_surfaceTexture) {
+        delete m_surfaceTexture;
+        m_surfaceTexture = 0;
+    }
+    if (m_androidSurface) {
+        if (QtAndroidPrivate::androidSdkVersion() > 13)
+            m_androidSurface->callMethod<void>("release");
+        delete m_androidSurface;
+        m_androidSurface = 0;
+    }
+    if (m_surfaceHolder) {
+        delete m_surfaceHolder;
+        m_surfaceHolder = 0;
+    }
+}
+
 jobject QAndroidVideoRendererControl::surfaceHolder()
 {
     if (!initSurfaceTexture())
@@ -209,10 +215,12 @@ jobject QAndroidVideoRendererControl::surfaceHolder()
 
     if (!m_surfaceHolder) {
         m_androidSurface = new QJNIObjectPrivate("android/view/Surface",
-                                          "(Landroid/graphics/SurfaceTexture;)V",
-                                          m_surfaceTexture->object());
+                                                 "(Landroid/graphics/SurfaceTexture;)V",
+                                                 m_surfaceTexture->object());
 
-        m_surfaceHolder = new JSurfaceTextureHolder(m_androidSurface->object());
+        m_surfaceHolder = new QJNIObjectPrivate("org/qtproject/qt5/android/multimedia/QtSurfaceTextureHolder",
+                                                "(Landroid/view/Surface;)V",
+                                                m_androidSurface->object());
     }
 
     return m_surfaceHolder->object();
@@ -243,6 +251,11 @@ void QAndroidVideoRendererControl::stop()
     if (m_surface && m_surface->isActive())
         m_surface->stop();
     m_nativeSize = QSize();
+}
+
+void QAndroidVideoRendererControl::reset()
+{
+    clearSurfaceTexture();
 }
 
 void QAndroidVideoRendererControl::onFrameAvailable()

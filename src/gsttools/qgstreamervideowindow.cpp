@@ -68,19 +68,14 @@ QGstreamerVideoWindow::QGstreamerVideoWindow(QObject *parent, const char *elemen
     }
 
     if (m_videoSink) {
-#if GST_CHECK_VERSION(1,0,0)
-        gst_object_ref_sink(GST_OBJECT(m_videoSink));
-        gst_object_ref_sink(GST_OBJECT(m_videoSink));
-#else
-        gst_object_ref(GST_OBJECT(m_videoSink)); // Take ownership
-        gst_object_sink(GST_OBJECT(m_videoSink));
-#endif
+        qt_gst_object_ref_sink(GST_OBJECT(m_videoSink)); //Take ownership
         GstPad *pad = gst_element_get_static_pad(m_videoSink, "sink");
 #if GST_CHECK_VERSION(1,0,0)
         m_bufferProbeId = gst_pad_add_probe(pad, GST_PAD_PROBE_TYPE_BUFFER, padBufferProbe, this, NULL);
 #else
         m_bufferProbeId = gst_pad_add_buffer_probe(pad, G_CALLBACK(padBufferProbe), this);
 #endif
+        gst_object_unref(GST_OBJECT(pad));
     }
     else
         qDebug() << "No m_videoSink available!";
@@ -146,6 +141,7 @@ bool QGstreamerVideoWindow::processSyncMessage(const QGstreamerMessage &message)
 
         GstPad *pad = gst_element_get_static_pad(m_videoSink,"sink");
         m_bufferProbeId = gst_pad_add_buffer_probe(pad, G_CALLBACK(padBufferProbe), this);
+        gst_object_unref(GST_OBJECT(pad));
 
         return true;
     }
@@ -390,6 +386,7 @@ void QGstreamerVideoWindow::updateNativeVideoSize()
 #else
         GstCaps *caps = gst_pad_get_negotiated_caps(pad);
 #endif
+        gst_object_unref(GST_OBJECT(pad));
 
         if (caps) {
             m_nativeSize = QGstUtils::capsCorrectedResolution(caps);

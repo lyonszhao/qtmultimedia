@@ -141,12 +141,8 @@ void QGstreamerVideoWidgetControl::createVideoWidget()
 
     if (!m_videoSink)
         m_videoSink = gst_element_factory_make ("ximagesink", NULL);
-#if !GST_CHECK_VERSION(1,0,0)
-    gst_object_ref (GST_OBJECT (m_videoSink)); //Take ownership
-    gst_object_sink (GST_OBJECT (m_videoSink));
-#else
-    gst_object_ref_sink(GST_OBJECT (m_videoSink));
-#endif
+
+    qt_gst_object_ref_sink(GST_OBJECT (m_videoSink)); //Take ownership
 }
 
 GstElement *QGstreamerVideoWidgetControl::videoSink()
@@ -239,6 +235,7 @@ void QGstreamerVideoWidgetControl::updateNativeVideoSize()
 #else
         GstCaps *caps = gst_pad_get_current_caps(pad);
 #endif
+        gst_object_unref(GST_OBJECT(pad));
 
         if (caps) {
             m_widget->setNativeSize(QGstUtils::capsCorrectedResolution(caps));

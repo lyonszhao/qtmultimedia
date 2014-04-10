@@ -49,7 +49,6 @@
 
 QT_BEGIN_NAMESPACE
 
-class JSurfaceTextureHolder;
 class QOpenGLTexture;
 class QOpenGLFramebufferObject;
 class QOpenGLShaderProgram;
@@ -92,6 +91,7 @@ public:
     bool isReady() Q_DECL_OVERRIDE;
     void setVideoSize(const QSize &size) Q_DECL_OVERRIDE;
     void stop() Q_DECL_OVERRIDE;
+    void reset() Q_DECL_OVERRIDE;
 
     void customEvent(QEvent *) Q_DECL_OVERRIDE;
 
@@ -107,13 +107,14 @@ private:
     void createGLResources();
 
     QMutex m_mutex;
+    void clearSurfaceTexture();
 
     QAbstractVideoSurface *m_surface;
     QSize m_nativeSize;
 
     QJNIObjectPrivate *m_androidSurface;
     JSurfaceTexture *m_surfaceTexture;
-    JSurfaceTextureHolder *m_surfaceHolder;
+    QJNIObjectPrivate *m_surfaceHolder;
 
     quint32 m_externalTex;
     QOpenGLFramebufferObject *m_fbo;
