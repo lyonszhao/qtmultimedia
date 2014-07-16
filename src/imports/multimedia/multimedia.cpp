@@ -81,6 +81,7 @@ public:
         qmlRegisterType<QDeclarativeRadio>(uri, 5, 0, "Radio");
         qmlRegisterType<QDeclarativeRadioData>(uri, 5, 0, "RadioData");
         qmlRegisterType<QDeclarativeCamera>(uri, 5, 0, "Camera");
+        qmlRegisterRevision<QDeclarativeCamera, 1>(uri, 5, 4);
         qmlRegisterType<QDeclarativeTorch>(uri, 5, 0, "Torch");
         qmlRegisterUncreatableType<QDeclarativeCameraCapture>(uri, 5, 0, "CameraCapture",
                                 trUtf8("CameraCapture is provided by Camera"));
@@ -94,6 +95,11 @@ public:
                                 trUtf8("CameraFlash is provided by Camera"));
         qmlRegisterUncreatableType<QDeclarativeCameraImageProcessing>(uri, 5, 0, "CameraImageProcessing",
                                 trUtf8("CameraImageProcessing is provided by Camera"));
+
+        // Make types available for the 5.3 version
+        // Adding "import QtMultimedia 5.3" in QML will fail unless at least one type is registered
+        // for that version.
+        qmlRegisterType<QSoundEffect>(uri, 5, 3, "SoundEffect");
 
         qmlRegisterType<QDeclarativeMediaMetaData>();
     }

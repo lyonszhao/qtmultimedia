@@ -67,7 +67,7 @@ class CameraBinService : public QMediaService
     Q_OBJECT
 
 public:
-    CameraBinService(const QString &service, QObject *parent = 0);
+    CameraBinService(GstElementFactory *sourceFactory, QObject *parent = 0);
     virtual ~CameraBinService();
 
     QMediaControl *requestControl(const char *name);
@@ -92,6 +92,7 @@ private:
     QGstreamerVideoWidgetControl *m_videoWidgetControl;
 #endif
     CameraBinImageCapture *m_imageCaptureControl;
+    QMediaControl *m_cameraInfoControl;
 };
 
 QT_END_NAMESPACE

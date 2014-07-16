@@ -56,6 +56,7 @@ class ResourcePolicyImpl : public QMediaPlayerResourceSetInterface
     Q_OBJECT
 public:
     ResourcePolicyImpl(QObject *parent = 0);
+    ~ResourcePolicyImpl();
 
     bool isVideoEnabled() const;
     void setVideoEnabled(bool videoEnabled);
@@ -63,22 +64,6 @@ public:
     void release();
     bool isGranted() const;
     bool isAvailable() const;
-
-private slots:
-    void handleResourcesGranted();
-    void handleResourcesDenied();
-    void handleResourcesLost();
-
-private:
-    enum ResourceStatus {
-        Initial = 0,
-        RequestedResource,
-        GrantedResource
-    };
-
-    bool m_videoEnabled;
-    ResourcePolicy::ResourceSet *m_resourceSet;
-    ResourceStatus m_status;
 };
 
 #endif // RESOURCEPOLICYIMPL_H

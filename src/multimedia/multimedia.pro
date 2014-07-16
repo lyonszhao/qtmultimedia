@@ -1,6 +1,12 @@
 TARGET = QtMultimedia
 QT = core-private network gui-private
 
+MODULE_PLUGIN_TYPES = \
+    mediaservice \
+    audio \
+    video/videonode \
+    playlistformats
+
 QMAKE_DOCS = $$PWD/doc/qtmultimedia.qdocconf
 
 load(qt_module)
@@ -15,7 +21,8 @@ PRIVATE_HEADERS += \
     qmediaserviceprovider_p.h \
     qmediaresourcepolicyplugin_p.h \
     qmediaresourcepolicy_p.h \
-    qmediaresourceset_p.h
+    qmediaresourceset_p.h \
+    qmediastoragelocation_p.h
 
 PUBLIC_HEADERS += \
     qmediabindableinterface.h \
@@ -41,6 +48,7 @@ SOURCES += \
     qmediaresourcepolicyplugin_p.cpp \
     qmediaresourcepolicy_p.cpp \
     qmediaresourceset_p.cpp \
+    qmediastoragelocation.cpp \
     qmultimedia.cpp
 
 include(audio/audio.pri)
@@ -67,11 +75,6 @@ ANDROID_FEATURES += \
     android.hardware.camera \
     android.hardware.camera.autofocus \
     android.hardware.microphone
-MODULE_PLUGIN_TYPES = \
-    mediaservice \
-    audio \
-    video/videonode \
-    playlistformats
 
 win32: LIBS_PRIVATE += -luuid
 

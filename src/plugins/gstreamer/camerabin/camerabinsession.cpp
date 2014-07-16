@@ -119,7 +119,7 @@
 
 QT_BEGIN_NAMESPACE
 
-CameraBinSession::CameraBinSession(QObject *parent)
+CameraBinSession::CameraBinSession(GstElementFactory *sourceFactory, QObject *parent)
     :QObject(parent),
      m_recordingActive(false),
      m_state(QCamera::UnloadedState),
@@ -133,6 +133,7 @@ CameraBinSession::CameraBinSession(QObject *parent)
      m_viewfinderInterface(0),
      m_videoSrc(0),
      m_viewfinderElement(0),
+     m_sourceFactory(sourceFactory),
      m_viewfinderHasChanged(true),
      m_videoInputHasChanged(true),
      m_audioSrc(0),
@@ -142,6 +143,9 @@ CameraBinSession::CameraBinSession(QObject *parent)
      m_audioEncoder(0),
      m_muxer(0)
 {
+    if (m_sourceFactory)
+        gst_object_ref(GST_OBJECT(m_sourceFactory));
+
     m_camerabin = gst_element_factory_make("camerabin2", "camerabin2");
     g_signal_connect(G_OBJECT(m_camerabin), "notify::idle", G_CALLBACK(updateBusyStatus), this);
     qt_gst_object_ref_sink(m_camerabin);
@@ -195,6 +199,9 @@ CameraBinSession::~CameraBinSession()
     }
     if (m_viewfinderElement)
         gst_object_unref(GST_OBJECT(m_viewfinderElement));
+
+    if (m_sourceFactory)
+        gst_object_unref(GST_OBJECT(m_sourceFactory));
 }
 
 #ifdef HAVE_GST_PHOTOGRAPHY
@@ -383,31 +390,16 @@ GstElement *CameraBinSession::buildCameraSource()
     m_videoInputHasChanged = false;
 
     GstElement *videoSrc = 0;
+
+    if (!videoSrc)
     g_object_get(G_OBJECT(m_camerabin), CAMERA_SOURCE_PROPERTY, &videoSrc, NULL);
 
-    // If the QT_GSTREAMER_CAMERABIN_SRC environment variable has been set use the source
-    // it recommends.
-    const QByteArray envCandidate = qgetenv("QT_GSTREAMER_CAMERABIN_SRC");
-    if (!m_videoSrc && !envCandidate.isEmpty()) {
-        m_videoSrc = gst_element_factory_make(envCandidate.constData(), "camera_source");
-    }
+    if (m_sourceFactory)
+        m_videoSrc = gst_element_factory_create(m_sourceFactory, "camera_source");
 
     // If gstreamer has set a default source use it.
     if (!m_videoSrc)
         m_videoSrc = videoSrc;
-
-    // If there's no better guidance try the names of some known camera source elements.
-    if (!m_videoSrc) {
-        const QList<QByteArray> candidates = QList<QByteArray>()
-                << "subdevsrc"
-                << "wrappercamerabinsrc";
-
-        foreach (const QByteArray &sourceElementName, candidates) {
-            m_videoSrc = gst_element_factory_make(sourceElementName.constData(), "camera_source");
-            if (m_videoSrc)
-                break;
-        }
-    }
 
     if (m_videoSrc && !m_inputDevice.isEmpty()) {
 #if CAMERABIN_DEBUG
@@ -487,6 +479,11 @@ QUrl CameraBinSession::outputLocation() const
 
 bool CameraBinSession::setOutputLocation(const QUrl& sink)
 {
+    if (!sink.isRelative() && !sink.isLocalFile()) {
+        qWarning("Output location must be a local file");
+        return false;
+    }
+
     m_sink = m_actualSink = sink;
     return true;
 }
@@ -1024,8 +1021,9 @@ void CameraBinSession::recordVideo()
     if (m_actualSink.isEmpty()) {
         QString ext = m_mediaContainerControl->suggestedFileExtension(m_mediaContainerControl->actualContainerFormat());
         m_actualSink = QUrl::fromLocalFile(generateFileName("clip_", defaultDir(QCamera::CaptureVideo), ext));
-    } else if (!m_actualSink.isLocalFile()) {
-        m_actualSink = QUrl::fromLocalFile(m_actualSink.toEncoded());
+    } else {
+        // Output location was rejected in setOutputlocation() if not a local file
+        m_actualSink = QUrl::fromLocalFile(QDir::currentPath()).resolved(m_actualSink);
     }
 
     QString fileName = m_actualSink.toLocalFile();
