@@ -50,6 +50,10 @@
 
 #include <private/qgstreamerbufferprobe_p.h>
 
+#if GST_CHECK_VERSION(1,0,0)
+#include <gst/video/video.h>
+#endif
+
 QT_BEGIN_NAMESPACE
 
 class CameraBinImageCapture : public QCameraImageCaptureControl, public QGstreamerBusMessageFilter
