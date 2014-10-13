@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
+** Copyright (C) 2014 Digia Plc and/or its subsidiary(-ies).
 ** Contact: http://www.qt-project.org/legal
 **
 ** This file is part of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
+** a written agreement between you and Digia. For licensing terms and
+** conditions see http://qt.digia.com/licensing. For further information
 ** use the contact form at http://qt.digia.com/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
 ** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** rights. These rights are described in the Digia Qt LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -55,6 +47,19 @@ static jclass g_qtCameraListenerClass = 0;
 static QMutex g_cameraMapMutex;
 typedef QMap<int, AndroidCamera *> CameraMap;
 Q_GLOBAL_STATIC(CameraMap, g_cameraMap)
+
+static inline bool exceptionCheckAndClear(JNIEnv *env)
+{
+    if (Q_UNLIKELY(env->ExceptionCheck())) {
+#ifdef QT_DEBUG
+        env->ExceptionDescribe();
+#endif // QT_DEBUG
+        env->ExceptionClear();
+        return true;
+    }
+
+    return false;
+}
 
 static QRect areaToRect(jobject areaObj)
 {
@@ -132,9 +137,9 @@ public:
     Q_INVOKABLE bool init(int cameraId);
 
     Q_INVOKABLE void release();
-    Q_INVOKABLE void lock();
-    Q_INVOKABLE void unlock();
-    Q_INVOKABLE void reconnect();
+    Q_INVOKABLE bool lock();
+    Q_INVOKABLE bool unlock();
+    Q_INVOKABLE bool reconnect();
 
     Q_INVOKABLE AndroidCamera::CameraFacing getFacing();
     Q_INVOKABLE int getNativeOrientation();
@@ -147,7 +152,7 @@ public:
 
     Q_INVOKABLE QSize previewSize() const { return m_previewSize; }
     Q_INVOKABLE void updatePreviewSize();
-    Q_INVOKABLE void setPreviewTexture(void *surfaceTexture);
+    Q_INVOKABLE bool setPreviewTexture(void *surfaceTexture);
 
     Q_INVOKABLE bool isZoomSupported();
     Q_INVOKABLE int getMaxZoom();
@@ -266,7 +271,7 @@ AndroidCamera *AndroidCamera::open(int cameraId)
     worker->start();
     d->moveToThread(worker);
     connect(worker, &QThread::finished, d, &AndroidCameraPrivate::deleteLater);
-    bool ok = false;
+    bool ok = true;
     QMetaObject::invokeMethod(d, "init", Qt::BlockingQueuedConnection, Q_RETURN_ARG(bool, ok), Q_ARG(int, cameraId));
     if (!ok) {
         worker->quit();
@@ -289,22 +294,28 @@ int AndroidCamera::cameraId() const
     return d->m_cameraId;
 }
 
-void AndroidCamera::lock()
+bool AndroidCamera::lock()
 {
     Q_D(AndroidCamera);
-    QMetaObject::invokeMethod(d, "lock", Qt::BlockingQueuedConnection);
+    bool ok = true;
+    QMetaObject::invokeMethod(d, "lock", Qt::BlockingQueuedConnection, Q_RETURN_ARG(bool, ok));
+    return ok;
 }
 
-void AndroidCamera::unlock()
+bool AndroidCamera::unlock()
 {
     Q_D(AndroidCamera);
-    QMetaObject::invokeMethod(d, "unlock", Qt::BlockingQueuedConnection);
+    bool ok = true;
+    QMetaObject::invokeMethod(d, "unlock", Qt::BlockingQueuedConnection, Q_RETURN_ARG(bool, ok));
+    return ok;
 }
 
-void AndroidCamera::reconnect()
+bool AndroidCamera::reconnect()
 {
     Q_D(AndroidCamera);
-    QMetaObject::invokeMethod(d, "reconnect");
+    bool ok = true;
+    QMetaObject::invokeMethod(d, "reconnect", Qt::BlockingQueuedConnection, Q_RETURN_ARG(bool, ok));
+    return ok;
 }
 
 void AndroidCamera::release()
@@ -368,13 +379,16 @@ void AndroidCamera::setPreviewSize(const QSize &size)
     QMetaObject::invokeMethod(d, "updatePreviewSize");
 }
 
-void AndroidCamera::setPreviewTexture(AndroidSurfaceTexture *surfaceTexture)
+bool AndroidCamera::setPreviewTexture(AndroidSurfaceTexture *surfaceTexture)
 {
     Q_D(AndroidCamera);
+    bool ok = true;
     QMetaObject::invokeMethod(d,
                               "setPreviewTexture",
                               Qt::BlockingQueuedConnection,
+                              Q_RETURN_ARG(bool, ok),
                               Q_ARG(void *, surfaceTexture ? surfaceTexture->surfaceTexture() : 0));
+    return ok;
 }
 
 bool AndroidCamera::isZoomSupported()
@@ -698,12 +712,12 @@ AndroidCameraPrivate::~AndroidCameraPrivate()
 bool AndroidCameraPrivate::init(int cameraId)
 {
     m_cameraId = cameraId;
+    QJNIEnvironmentPrivate env;
     m_camera = QJNIObjectPrivate::callStaticObjectMethod("android/hardware/Camera",
                                                          "open",
                                                          "(I)Landroid/hardware/Camera;",
                                                          cameraId);
-
-    if (!m_camera.isValid())
+    if (exceptionCheckAndClear(env) || !m_camera.isValid())
         return false;
 
     m_cameraListener = QJNIObjectPrivate(g_qtCameraListenerClass, "(I)V", m_cameraId);
@@ -731,26 +745,25 @@ void AndroidCameraPrivate::release()
         m_camera.callMethod<void>("release");
 }
 
-void AndroidCameraPrivate::lock()
+bool AndroidCameraPrivate::lock()
 {
+    QJNIEnvironmentPrivate env;
     m_camera.callMethod<void>("lock");
+    return !exceptionCheckAndClear(env);
 }
 
-void AndroidCameraPrivate::unlock()
+bool AndroidCameraPrivate::unlock()
 {
+    QJNIEnvironmentPrivate env;
     m_camera.callMethod<void>("unlock");
+    return !exceptionCheckAndClear(env);
 }
 
-void AndroidCameraPrivate::reconnect()
+bool AndroidCameraPrivate::reconnect()
 {
     QJNIEnvironmentPrivate env;
     m_camera.callMethod<void>("reconnect");
-    if (env->ExceptionCheck()) {
-#ifdef QT_DEBUG
-        env->ExceptionDescribe();
-#endif // QT_DEBUG
-        env->ExceptionDescribe();
-    }
+    return !exceptionCheckAndClear(env);
 }
 
 AndroidCamera::CameraFacing AndroidCameraPrivate::getFacing()
@@ -832,11 +845,13 @@ void AndroidCameraPrivate::updatePreviewSize()
     emit previewSizeChanged();
 }
 
-void AndroidCameraPrivate::setPreviewTexture(void *surfaceTexture)
+bool AndroidCameraPrivate::setPreviewTexture(void *surfaceTexture)
 {
+    QJNIEnvironmentPrivate env;
     m_camera.callMethod<void>("setPreviewTexture",
                               "(Landroid/graphics/SurfaceTexture;)V",
                               static_cast<jobject>(surfaceTexture));
+    return !exceptionCheckAndClear(env);
 }
 
 bool AndroidCameraPrivate::isZoomSupported()
@@ -1020,8 +1035,7 @@ void AndroidCameraPrivate::setFocusAreas(const QList<QRect> &areas)
             arrayList.callMethod<jboolean>("add",
                                            "(Ljava/lang/Object;)Z",
                                            rectToArea(areas.at(i)).object());
-            if (env->ExceptionCheck())
-                env->ExceptionClear();
+            exceptionCheckAndClear(env);
         }
         list = arrayList;
     }
@@ -1347,9 +1361,11 @@ void AndroidCameraPrivate::fetchLastPreviewFrame()
 
 void AndroidCameraPrivate::applyParameters()
 {
+    QJNIEnvironmentPrivate env;
     m_camera.callMethod<void>("setParameters",
                               "(Landroid/hardware/Camera$Parameters;)V",
                               m_parameters.object());
+    exceptionCheckAndClear(env);
 }
 
 QStringList AndroidCameraPrivate::callParametersStringListMethod(const QByteArray &methodName)
@@ -1386,10 +1402,8 @@ static JNINativeMethod methods[] = {
 bool AndroidCamera::initJNI(JNIEnv *env)
 {
     jclass clazz = env->FindClass("org/qtproject/qt5/android/multimedia/QtCameraListener");
-    if (env->ExceptionCheck())
-        env->ExceptionClear();
 
-    if (clazz) {
+    if (!exceptionCheckAndClear(env) && clazz) {
         g_qtCameraListenerClass = static_cast<jclass>(env->NewGlobalRef(clazz));
         if (env->RegisterNatives(g_qtCameraListenerClass,
                                  methods,

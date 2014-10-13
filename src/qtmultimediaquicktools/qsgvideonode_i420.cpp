@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
+** Copyright (C) 2014 Digia Plc and/or its subsidiary(-ies).
 ** Contact: http://www.qt-project.org/legal
 **
 ** This file is part of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
+** a written agreement between you and Digia. For licensing terms and
+** conditions see http://qt.digia.com/licensing. For further information
 ** use the contact form at http://qt.digia.com/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
 ** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** rights. These rights are described in the Digia Qt LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -236,7 +228,7 @@ QSGVideoMaterial_YUV420::QSGVideoMaterial_YUV420(const QVideoSurfaceFormat &form
 QSGVideoMaterial_YUV420::~QSGVideoMaterial_YUV420()
 {
     if (!m_textureSize.isEmpty())
-        glDeleteTextures(Num_Texture_IDs, m_textureIds);
+        QOpenGLContext::currentContext()->functions()->glDeleteTextures(Num_Texture_IDs, m_textureIds);
 }
 
 void QSGVideoMaterial_YUV420::bind()
@@ -252,8 +244,8 @@ void QSGVideoMaterial_YUV420::bind()
             // Frame has changed size, recreate textures...
             if (m_textureSize != m_frame.size()) {
                 if (!m_textureSize.isEmpty())
-                    glDeleteTextures(Num_Texture_IDs, m_textureIds);
-                glGenTextures(Num_Texture_IDs, m_textureIds);
+                    functions->glDeleteTextures(Num_Texture_IDs, m_textureIds);
+                functions->glGenTextures(Num_Texture_IDs, m_textureIds);
                 m_textureSize = m_frame.size();
             }
 
@@ -265,8 +257,8 @@ void QSGVideoMaterial_YUV420::bind()
             m_uvWidth = qreal(fw) / (2 * m_frame.bytesPerLine(u));
 
             GLint previousAlignment;
-            glGetIntegerv(GL_UNPACK_ALIGNMENT, &previousAlignment);
-            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+            functions->glGetIntegerv(GL_UNPACK_ALIGNMENT, &previousAlignment);
+            functions->glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
             functions->glActiveTexture(GL_TEXTURE1);
             bindTexture(m_textureIds[1], m_frame.bytesPerLine(u), fh / 2, m_frame.bits(u));
@@ -275,7 +267,7 @@ void QSGVideoMaterial_YUV420::bind()
             functions->glActiveTexture(GL_TEXTURE0); // Finish with 0 as default texture unit
             bindTexture(m_textureIds[0], m_frame.bytesPerLine(y), fh, m_frame.bits(y));
 
-            glPixelStorei(GL_UNPACK_ALIGNMENT, previousAlignment);
+            functions->glPixelStorei(GL_UNPACK_ALIGNMENT, previousAlignment);
 
             m_frame.unmap();
         }
@@ -283,22 +275,24 @@ void QSGVideoMaterial_YUV420::bind()
         m_frame = QVideoFrame();
     } else {
         functions->glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, m_textureIds[1]);
+        functions->glBindTexture(GL_TEXTURE_2D, m_textureIds[1]);
         functions->glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, m_textureIds[2]);
+        functions->glBindTexture(GL_TEXTURE_2D, m_textureIds[2]);
         functions->glActiveTexture(GL_TEXTURE0); // Finish with 0 as default texture unit
-        glBindTexture(GL_TEXTURE_2D, m_textureIds[0]);
+        functions->glBindTexture(GL_TEXTURE_2D, m_textureIds[0]);
     }
 }
 
 void QSGVideoMaterial_YUV420::bindTexture(int id, int w, int h, const uchar *bits)
 {
-    glBindTexture(GL_TEXTURE_2D, id);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, w, h, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, bits);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    QOpenGLFunctions *functions = QOpenGLContext::currentContext()->functions();
+
+    functions->glBindTexture(GL_TEXTURE_2D, id);
+    functions->glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, w, h, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, bits);
+    functions->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    functions->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    functions->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    functions->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 }
 
 QSGVideoNode_I420::QSGVideoNode_I420(const QVideoSurfaceFormat &format) :

@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2012 Digia Plc and/or its subsidiary(-ies).
+** Copyright (C) 2014 Digia Plc and/or its subsidiary(-ies).
 ** Contact: http://www.qt-project.org/legal
 **
 ** This file is part of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
+** a written agreement between you and Digia. For licensing terms and
+** conditions see http://qt.digia.com/licensing. For further information
 ** use the contact form at http://qt.digia.com/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
 ** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** rights. These rights are described in the Digia Qt LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -51,6 +43,7 @@
 #include <qvideoframe.h>
 #include <QDebug>
 #include <qopenglcontext.h>
+#include <qopenglfunctions.h>
 #include <qwindow.h>
 
 #include <EGL/egl.h>
@@ -88,6 +81,67 @@ private:
     GLuint m_textureId;
 };
 
+EGLWrapper::EGLWrapper()
+{
+#ifndef QT_OPENGL_ES_2_ANGLE_STATIC
+    // Resolve the EGL functions we use. When configured for dynamic OpenGL, no
+    // component in Qt will link to libEGL.lib and libGLESv2.lib. We know
+    // however that libEGL is loaded for sure, since this is an ANGLE-only path.
+
+# ifdef QT_DEBUG
+    HMODULE eglHandle = GetModuleHandle(L"libEGLd.dll");
+# else
+    HMODULE eglHandle = GetModuleHandle(L"libEGL.dll");
+# endif
+
+    if (!eglHandle)
+        qWarning("No EGL library loaded");
+
+    m_eglGetProcAddress = (EglGetProcAddress) GetProcAddress(eglHandle, "eglGetProcAddress");
+    m_eglCreatePbufferSurface = (EglCreatePbufferSurface) GetProcAddress(eglHandle, "eglCreatePbufferSurface");
+    m_eglDestroySurface = (EglDestroySurface) GetProcAddress(eglHandle, "eglDestroySurface");
+    m_eglBindTexImage = (EglBindTexImage) GetProcAddress(eglHandle, "eglBindTexImage");
+    m_eglReleaseTexImage = (EglReleaseTexImage) GetProcAddress(eglHandle, "eglReleaseTexImage");
+#else
+    // Static ANGLE-only build. There is no libEGL.dll in use.
+
+    m_eglGetProcAddress = ::eglGetProcAddress;
+    m_eglCreatePbufferSurface = ::eglCreatePbufferSurface;
+    m_eglDestroySurface = ::eglDestroySurface;
+    m_eglBindTexImage = ::eglBindTexImage;
+    m_eglReleaseTexImage = ::eglReleaseTexImage;
+#endif
+}
+
+__eglMustCastToProperFunctionPointerType EGLWrapper::getProcAddress(const char *procname)
+{
+    Q_ASSERT(m_eglGetProcAddress);
+    return m_eglGetProcAddress(procname);
+}
+
+EGLSurface EGLWrapper::createPbufferSurface(EGLDisplay dpy, EGLConfig config, const EGLint *attrib_list)
+{
+    Q_ASSERT(m_eglCreatePbufferSurface);
+    return m_eglCreatePbufferSurface(dpy, config, attrib_list);
+}
+
+EGLBoolean EGLWrapper::destroySurface(EGLDisplay dpy, EGLSurface surface)
+{
+    Q_ASSERT(m_eglDestroySurface);
+    return m_eglDestroySurface(dpy, surface);
+}
+
+EGLBoolean EGLWrapper::bindTexImage(EGLDisplay dpy, EGLSurface surface, EGLint buffer)
+{
+    Q_ASSERT(m_eglBindTexImage);
+    return m_eglBindTexImage(dpy, surface, buffer);
+}
+
+EGLBoolean EGLWrapper::releaseTexImage(EGLDisplay dpy, EGLSurface surface, EGLint buffer)
+{
+    Q_ASSERT(m_eglReleaseTexImage);
+    return m_eglReleaseTexImage(dpy, surface, buffer);
+}
 
 D3DPresentEngine::D3DPresentEngine()
     : QObject()
@@ -104,6 +158,7 @@ D3DPresentEngine::D3DPresentEngine()
     , m_eglSurface(0)
     , m_glTexture(0)
     , m_texture(0)
+    , m_egl(0)
 {
     ZeroMemory(&m_displayMode, sizeof(m_displayMode));
 
@@ -126,15 +181,16 @@ D3DPresentEngine::~D3DPresentEngine()
     qt_wmf_safeRelease(&m_D3D9);
 
     if (m_eglSurface) {
-        eglReleaseTexImage(m_eglDisplay, m_eglSurface, EGL_BACK_BUFFER);
-        eglDestroySurface(m_eglDisplay, m_eglSurface);
+        m_egl->releaseTexImage(m_eglDisplay, m_eglSurface, EGL_BACK_BUFFER);
+        m_egl->destroySurface(m_eglDisplay, m_eglSurface);
         m_eglSurface = NULL;
     }
     if (m_glTexture)
-        glDeleteTextures(1, &m_glTexture);
+        QOpenGLContext::currentContext()->functions()->glDeleteTextures(1, &m_glTexture);
 
     delete m_glContext;
     delete m_offscreenSurface;
+    delete m_egl;
 }
 
 void D3DPresentEngine::start()
@@ -358,14 +414,16 @@ void D3DPresentEngine::createOffscreenTexture()
     if (m_glContext)
         m_glContext->makeCurrent(m_offscreenSurface);
 
+    if (!m_egl)
+        m_egl = new EGLWrapper;
+
     QPlatformNativeInterface *nativeInterface = QGuiApplication::platformNativeInterface();
     m_eglDisplay = static_cast<EGLDisplay*>(
                 nativeInterface->nativeResourceForContext("eglDisplay", currentContext));
     m_eglConfig = static_cast<EGLDisplay*>(
                 nativeInterface->nativeResourceForContext("eglConfig", currentContext));
 
-    glGenTextures(1, &m_glTexture);
-
+    currentContext->functions()->glGenTextures(1, &m_glTexture);
 
     int w = m_surfaceFormat.frameWidth();
     int h = m_surfaceFormat.frameHeight();
@@ -378,11 +436,12 @@ void D3DPresentEngine::createOffscreenTexture()
         EGL_NONE
     };
 
-    EGLSurface pbuffer = eglCreatePbufferSurface(m_eglDisplay, m_eglConfig, attribs);
+    EGLSurface pbuffer = m_egl->createPbufferSurface(m_eglDisplay, m_eglConfig, attribs);
 
     HANDLE share_handle = 0;
     PFNEGLQUERYSURFACEPOINTERANGLEPROC eglQuerySurfacePointerANGLE =
-            reinterpret_cast<PFNEGLQUERYSURFACEPOINTERANGLEPROC>(eglGetProcAddress("eglQuerySurfacePointerANGLE"));
+            reinterpret_cast<PFNEGLQUERYSURFACEPOINTERANGLEPROC>(m_egl->getProcAddress("eglQuerySurfacePointerANGLE"));
+    Q_ASSERT(eglQuerySurfacePointerANGLE);
     eglQuerySurfacePointerANGLE(
                 m_eglDisplay,
                 pbuffer,
@@ -410,7 +469,7 @@ bool D3DPresentEngine::updateTexture(IDirect3DSurface9 *src)
     if (m_glContext)
         m_glContext->makeCurrent(m_offscreenSurface);
 
-    glBindTexture(GL_TEXTURE_2D, m_glTexture);
+    QOpenGLContext::currentContext()->functions()->glBindTexture(GL_TEXTURE_2D, m_glTexture);
 
     IDirect3DSurface9 *dest = NULL;
 
@@ -424,7 +483,7 @@ bool D3DPresentEngine::updateTexture(IDirect3DSurface9 *src)
         qWarning("Failed to copy D3D surface");
 
     if (hr == S_OK)
-        eglBindTexImage(m_eglDisplay, m_eglSurface, EGL_BACK_BUFFER);
+        m_egl->bindTexImage(m_eglDisplay, m_eglSurface, EGL_BACK_BUFFER);
 
 done:
     qt_wmf_safeRelease(&dest);

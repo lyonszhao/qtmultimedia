@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
+** Copyright (C) 2014 Digia Plc and/or its subsidiary(-ies).
 ** Contact: http://www.qt-project.org/legal
 **
 ** This file is part of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
+** a written agreement between you and Digia. For licensing terms and
+** conditions see http://qt.digia.com/licensing. For further information
 ** use the contact form at http://qt.digia.com/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
 ** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** rights. These rights are described in the Digia Qt LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -51,6 +43,7 @@
 #include <QtMultimedia/qvideoframe.h>
 #include <QtMultimedia/qabstractvideosurface.h>
 #include <QtMultimedia/qvideosurfaceformat.h>
+#include <private/qmediastoragelocation_p.h>
 
 #include <tchar.h>
 #include <dshow.h>
@@ -75,17 +68,7 @@ struct ISampleGrabber;
 
 QT_BEGIN_NAMESPACE
 
-class DSVideoRenderer;
 class SampleGrabberCallbackPrivate;
-
-
-struct video_buffer {
-    unsigned char* buffer;
-    int            length;
-    qint64         time;
-};
-
-typedef QMap<unsigned int, QList<QSize> > FormatResolutionMap;
 
 class DSCameraSession : public QObject
 {
@@ -94,113 +77,82 @@ public:
     DSCameraSession(QObject *parent = 0);
     ~DSCameraSession();
 
-    bool deviceReady();
-    bool pictureInProgress();
+    QCamera::Status status() const { return m_status; }
 
-    // camera controls
-
-    int framerate() const;
-    void setFrameRate(int rate);
-    int brightness() const;
-    void setBrightness(int b);
-    int contrast() const;
-    void setContrast(int c);
-    int saturation() const;
-    void setSaturation(int s);
-    int hue() const;
-    void setHue(int h);
-    int sharpness() const;
-    void setSharpness(int s);
-    int zoom() const;
-    void setZoom(int z);
-    bool backlightCompensation() const;
-    void setBacklightCompensation(bool);
-    int whitelevel() const;
-    void setWhitelevel(int w);
-    int rotation() const;
-    void setRotation(int r);
-    bool flash() const;
-    void setFlash(bool f);
-    bool autofocus() const;
-    void setAutofocus(bool f);
-
-    QSize frameSize() const;
-    void setFrameSize(const QSize& s);
     void setDevice(const QString &device);
-    QList<QVideoFrame::PixelFormat> supportedPixelFormats();
-    QVideoFrame::PixelFormat pixelFormat() const;
-    void setPixelFormat(QVideoFrame::PixelFormat fmt);
-    QList<QSize> supportedResolutions(QVideoFrame::PixelFormat format);
 
-    // media control
+    bool load();
+    bool unload();
+    bool startPreview();
+    bool stopPreview();
 
-    bool setOutputLocation(const QUrl &sink);
-    QUrl outputLocation() const;
-    qint64 position() const;
-    int state() const;
-    void record();
-    void pause();
-    void stop();
+    bool isReadyForCapture();
+    int captureImage(const QString &fileName);
 
     void setSurface(QAbstractVideoSurface* surface);
 
-    int captureImage(const QString &fileName);
-
-    AM_MEDIA_TYPE StillMediaType;
-    QList<video_buffer*> frames;
-    SampleGrabberCallbackPrivate* StillCapCB;
-
-    QMutex mutex;
-
 Q_SIGNALS:
-    void stateChanged(QCamera::State);
+    void statusChanged(QCamera::Status);
+    void imageExposed(int id);
     void imageCaptured(int id, const QImage &preview);
     void imageSaved(int id, const QString &fileName);
     void readyForCaptureChanged(bool);
+    void captureError(int id, int error, const QString &errorString);
 
 private Q_SLOTS:
-    void captureFrame();
+    void presentFrame();
+    void updateReadyForCapture();
 
 private:
-    QVideoSurfaceFormat actualFormat;
-    QList<QVideoFrame::PixelFormat> types;
+    void setStatus(QCamera::Status status);
+    void populateCommonResolutions();
 
-    QTime timeStamp;
-    bool graph;
-    bool active;
-    bool opened;
-    bool available;
-    QCamera::State m_state;
-    QByteArray m_device;
-    QUrl m_sink;
-    DSVideoRenderer*   m_output;
-    QAbstractVideoSurface* m_surface;
-    QVideoFrame::PixelFormat pixelF;
-    QSize m_windowSize;
-    FormatResolutionMap resolutions;
+    void onFrameAvailable(const char *frameData, long len);
+    void saveCapturedImage(int id, const QImage &image, const QString &path);
 
-    ICaptureGraphBuilder2* pBuild;
-    IGraphBuilder* pGraph;
-    IBaseFilter* pCap;
-    IBaseFilter* pSG_Filter;
-    ISampleGrabber *pSG;
-
-
-    QString m_snapshot;
-    int m_currentImageId;
-    bool needsHorizontalMirroring;
-    bool needsVerticalMirroring;
-protected:
-    HRESULT getPin(IBaseFilter *pFilter, PIN_DIRECTION PinDir, IPin **ppPin);
     bool createFilterGraph();
-    void updateProperties();
-    bool setProperties();
-    bool openStream();
-    void closeStream();
-    bool startStream();
-    void stopStream();
-    void suspendStream();
-    void resumeStream();
+    bool connectGraph();
+    void disconnectGraph();
+    void updateSourceCapabilities();
+    bool configurePreviewFormat();
+
+    QMutex m_presentMutex;
+    QMutex m_captureMutex;
+
+    // Capture Graph
+    ICaptureGraphBuilder2* m_graphBuilder;
+    IGraphBuilder* m_filterGraph;
+
+    // Source (camera)
+    QString m_sourceDeviceName;
+    IBaseFilter* m_sourceFilter;
+    AM_MEDIA_TYPE m_sourcePreferredFormat;
+    QSize m_sourcePreferredResolution;
+    bool m_needsHorizontalMirroring;
+
+    // Preview
+    IBaseFilter *m_previewFilter;
+    ISampleGrabber *m_previewSampleGrabber;
+    IBaseFilter *m_nullRendererFilter;
+    QVideoFrame m_currentFrame;
+    bool m_previewStarted;
+    QAbstractVideoSurface* m_surface;
+    QVideoSurfaceFormat m_previewSurfaceFormat;
+    QVideoFrame::PixelFormat m_previewPixelFormat;
+    QSize m_previewSize;
+
+    // Image capture
+    QString m_imageCaptureFileName;
+    QMediaStorageLocation m_fileNameGenerator;
+    bool m_readyForCapture;
+    int m_imageIdCounter;
+    int m_currentImageId;
+    QVideoFrame m_capturedFrame;
+
+    // Internal state
+    QCamera::Status m_status;
+
+    friend class SampleGrabberCallbackPrivate;
 };
 
 QT_END_NAMESPACE
