@@ -96,9 +96,6 @@ public:
 
     GstFlowReturn render(GstBuffer *buffer);
 
-    GstBuffer *lastPrerolledBuffer() const { return m_lastPrerolledBuffer; }
-    void setLastPrerolledBuffer(GstBuffer *lastPrerolledBuffer); // set prerolledBuffer to 0 to discard prerolled buffer
-
 private slots:
     void queuedStart();
     void queuedStop();
@@ -120,8 +117,6 @@ private:
     QVideoSurfaceFormat m_format;
     QVideoFrame m_frame;
     GstFlowReturn m_renderReturn;
-    // this pointer is not 0 when there is a prerolled buffer waiting to be displayed
-    GstBuffer *m_lastPrerolledBuffer;
     int m_bytesPerLine;
     bool m_started;
     bool m_startCanceled;
@@ -133,8 +128,6 @@ public:
     GstVideoSink parent;
 
     static QVideoSurfaceGstSink *createSink(QAbstractVideoSurface *surface);
-
-    static void handleShowPrerollChange(GObject *o, GParamSpec *p, gpointer d);
 
 private:
     static GType get_type();
@@ -155,11 +148,7 @@ private:
     static gboolean start(GstBaseSink *sink);
     static gboolean stop(GstBaseSink *sink);
 
-    static gboolean unlock(GstBaseSink *sink);
-
-    static gboolean event(GstBaseSink *sink, GstEvent *event);
-    static GstFlowReturn preroll(GstBaseSink *sink, GstBuffer *buffer);
-    static GstFlowReturn render(GstBaseSink *sink, GstBuffer *buffer);
+    static GstFlowReturn show_frame(GstVideoSink *sink, GstBuffer *buffer);
 
 private:
     QVideoSurfaceGstDelegate *delegate;
