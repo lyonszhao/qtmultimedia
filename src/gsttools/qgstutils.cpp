@@ -1267,8 +1267,10 @@ void QGstUtils::setMetaData(GstBin *bin, const QMap<QByteArray, QVariant> &data)
 GstCaps *QGstUtils::videoFilterCaps()
 {
     static GstStaticCaps staticCaps = GST_STATIC_CAPS(
-#if GST_CHECK_VERSION(1,0,0)
+#if GST_CHECK_VERSION(1,2,0)
         "video/x-raw(ANY);"
+#elif GST_CHECK_VERSION(1,0,0)
+        "video/x-raw;"
 #else
         "video/x-raw-yuv;"
         "video/x-raw-rgb;"
